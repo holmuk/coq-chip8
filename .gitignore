@@ -1,0 +1,28 @@
+# Coq stuff
+
+\#*\#
+*.vo
+*.v.d
+*.glob
+.coq-native
+Makefile.coq
+*.aux
+CoqMakefile.conf
+Makefile.coq.conf
+.coqdeps.d
+awk.Makefile
+
+# General files
+
+Thumbs.db
+.DS_Store
+.svn
+
+*~
+#*#
+*.bak
+*.BAK
+*.orig
+*.prof
+*.rej
+*.html
