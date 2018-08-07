@@ -9,8 +9,16 @@ Require Import chip8.Maps.
 
 Import Int.
 
-(** *
-  CHIP-8 has 16 8-bit data registers (V0-VF) and one special 16-bit address register.
+(** Hardware specification *)
+
+(** In general, coq-chip8 and original CHIP-8 has much in common if we speak about general approaches to ISA design.
+  The big difference is that coq-chip8 has no keyboard nor display at all, it's better to consider our implementation as an abstract machine that realizes
+  a subset of CHIP-8 ISA.
+*)
+
+(**
+  coq-chip8 has 16 general purpose registers (V0 - VF) and three special ones (SP: Stack Pointer, PC: Program Counter and AReg: Address Register).
+  We use AReg to work with memory. In original CHIP-8 we use the I register.
   *)
 
 Inductive VReg : Type :=
@@ -27,8 +35,6 @@ Inductive Reg : Type :=
 
 Coercion VR: VReg >-> Reg.
 
-Notation "'I'" := AReg (only parsing).
-
 Lemma Reg_eq: forall (x y: Reg), {x = y} + {x <> y}.
 Proof.
   repeat decide equality.
@@ -43,28 +49,33 @@ Module RegMap := EMap (RegEq).
 
 Definition RegFile := RegMap.t int.
 
-(** *
-  Memory is simple in Chip-8.
-  I think it's possible not to use Memory.v from CopmCert.
+(**
+  In our implementation memory is an almost unbound set of words.
   *)
 
-Module ByteEq.
+Module IntEq.
   Definition t := int.
   Definition eq := Int.eq_dec.
-End ByteEq.
+End IntEq.
 
-Module MemoryMap := EMap (ByteEq).
+Module MemoryMap := EMap (IntEq).
+
 Definition Memory := MemoryMap.t int.
 
-(**
-  Stack is just a list of addresses.
-  *)
+Definition EmptyMemory :=
+  MemoryMap.init (repr 0%Z).
 
+(**
+  I decided to separate the stack from the main memory to not check bounds of the stack
+  *)
 
 Definition Stack := list int.
 
 (**
-  Instructions of Chip-8
+  The instructions of coq-chip8 are the same as the instructions of original CHIP-8 ISA, with some exceptions:
+  1) No instructions related with keyboard/display are realized
+  2) cls clears the memory, not a part of
+  3) ldr and str work only with individual registers
 *)
 
 Inductive Instruction : Type :=
@@ -94,16 +105,16 @@ Inductive Instruction : Type :=
 
 Definition code := list Instruction.
 
-Module IntEq.
-  Definition t := int.
-  Definition eq := Int.eq_dec.
-End IntEq.
+(*Module InstructionMap := EMap (IntEq).*)
 
-Module InstructionMap := EMap (IntEq).
+Module InstructionMap := MemoryMap.
 
-Definition InstructionMemory := InstructionMap.t Instruction.
+Definition InstructionMemory := MemoryMap.t Instruction.
 
-(** Code is stored in InstructionMemory *)
+Definition EmptyInstructionMemory :=
+  MemoryMap.init (Icls).
+
+(** * Operational semantics of coq-chip8 *)
 
 Notation "a # b" := (a b) (at level 1, only parsing).
 Notation "a # b <- c" := (RegMap.set b c a) (at level 1, b at next level).
@@ -119,12 +130,6 @@ Definition LoadCode (c: code) (IM: InstructionMemory) : InstructionMemory :=
 
 Import ListNotations.
 
-Definition EmptyInstructionMemory :=
-  InstructionMap.init (Icls).
-
-Definition EmptyMemory :=
-  MemoryMap.init (repr 0%Z).
-
 Definition NextPC RF :=
   (add (RF#PC) (repr 2%Z)).
 
@@ -133,9 +138,6 @@ Definition NextPC RF :=
 Inductive Output: Type :=
   | Fine: Memory -> InstructionMemory -> RegFile -> Stack -> Output
   | Fail: Output.
-
-Definition StackArea :=
-  (repr 96%Z).
 
 Definition Skip M IM RF St cond : Output :=
    if cond then
@@ -207,6 +209,8 @@ Definition ExecuteStep (M: Memory) IM RF St : Output :=
   | _ => Fail
   end.
 
+(** It's not the truth every program will end up within finite time, so I decided to introduce n *)
+
 Fixpoint ExecuteNSteps (M: Memory) IM RF St (n: nat) : Output :=
   match n with
   | 0%nat => Fine M IM RF St
@@ -219,15 +223,24 @@ Fixpoint ExecuteNSteps (M: Memory) IM RF St (n: nat) : Output :=
     end
   end.
 
-Definition SampleCode :=
-  [(Imovb v0 (Int.repr 4%Z));
-   (Imovb v1 (Int.repr 5%Z));
-   (Iadd v0 v1)].
+(** Automatisation to reason about coq-chip8 programs *)
 
-Hint Unfold LoadCode SampleCode EmptyInstructionMemory EmptyMemory : chipmem.
-Hint Unfold ExecuteNSteps ExecuteStep NextPC : chipmem.
+Definition Run C n : Output :=
+  ExecuteNSteps EmptyMemory
+    (LoadCode C EmptyInstructionMemory)
+    (RegMap.init zero) [] n.
+
+Hint Unfold LoadCode EmptyInstructionMemory EmptyMemory : chipmem.
+Hint Unfold ExecuteNSteps ExecuteStep NextPC Skip Run : chipmem.
 Hint Unfold MemoryMap.init InstructionMap.init MemoryMap.set InstructionMap.set : chipmem.
 Hint Unfold RegMap.init RegMap.set IntEq.eq RegEq.eq zero : chipmem.
+
+Lemma Z_eq_eq: forall x,
+  eq (repr x) (repr x) = true.
+Proof.
+  intros. unfold eq. unfold zeq. rewrite unsigned_repr_eq.
+  case (Z.eq_dec _ _); intros; intuition.
+Qed.
 
 Ltac simpl_code :=
   repeat autounfold with chipmem; simpl;
@@ -240,7 +253,7 @@ Ltac simpl_code :=
     change (x # y <- z) with (RegMap.set y z x); try unfold RegMap.set
   end; repeat autounfold with chipmem; simpl.
 
-Ltac deal_with_eq :=
+Ltac deal_with_eq_dec :=
   repeat (let F := fresh in
    (case (eq_dec _ _); intro F; try inversion F));
   repeat match goal with
@@ -255,20 +268,79 @@ Ltac inverse_eq :=
   | H: ?x = ?y |- _ => try inversion H
   end.
 
-Lemma SampleCode_is_fine:
-  exists n M IM RF St,
-  ExecuteNSteps EmptyMemory
-    (LoadCode SampleCode EmptyInstructionMemory)
-    (RegMap.init zero) [] n = Fine M IM RF St /\
-  RF#v0 = (repr 9%Z).
+Hint Unfold eq zeq : Z_unfold.
+
+Lemma Z_eq_neq:
+  eq (repr 4) (repr 5) = false.
 Proof.
-  exists 3%nat.
-  simpl_code. deal_with_eq.
-  all: match goal with
+  unfold eq. unfold zeq.
+  case (Z.eq_dec _ _); intros; intuition.
+  inverse_eq.
+Qed.
+
+Ltac deal_with_eq :=
+  repeat match goal with
+  | |- context [eq ?x ?x] =>
+    rewrite Z_eq_eq
+  | H: context[eq ?x ?x] |- _ =>
+    rewrite Z_eq_eq in H
+  end; autounfold with Z_unfold;
+  try (case (Z.eq_dec _ _); intros; [intuition | inverse_eq]); simpl in *.
+
+Ltac Fine_eq :=
+  match goal with
   | |- context[Fine ?M' ?IM' ?RF' ?St' = Fine _ _ _ _ /\ _] =>
     exists M'; exists IM'; exists RF'; exists St'
   end.
-  all: try inverse_eq.
-  all: intuition. deal_with_eq; try inverse_eq.
+
+(** * Examples *)
+
+Definition SampleAddition :=
+  [(Imovb v0 (Int.repr 4%Z));
+   (Imovb v1 (Int.repr 5%Z));
+   (Iadd v0 v1)].
+
+Lemma SampleAddition_is_ok:
+  exists n M IM RF St,
+  Run SampleAddition n = Fine M IM RF St /\
+  RF#v0 = (repr 9%Z).
+Proof.
+  exists 3%nat. unfold SampleAddition.
+  simpl_code. deal_with_eq_dec.
+  all: try Fine_eq; try inverse_eq; intuition.
+  deal_with_eq_dec; try inverse_eq.
   intuition.
+Qed.
+
+Definition SampleSkipper :=
+  [(Imovb v0 (Int.repr 4));
+   (Iskeqb v0 (Int.repr 4));
+   (Imovb v0 (Int.repr 8));
+   (Icls)].
+
+Lemma SampleSkipper_is_ok:
+  exists n M IM RF St,
+  Run SampleSkipper n = Fine M IM RF St /\
+  RF#v0 = (repr 4).
+Proof.
+  exists 3%nat. unfold SampleSkipper. simpl_code. deal_with_eq_dec.
+  all: try Fine_eq; try inverse_eq; deal_with_eq_dec.
+  all: deal_with_eq; deal_with_eq_dec; try Fine_eq.
+  all: intuition.
+  deal_with_eq_dec. inverse_eq. auto.
+Qed.
+
+Definition SampleJumperNotOk :=
+  [(Irts)].
+
+Definition NotCorrect C :=
+  exists n, Run C n = Fail.
+
+Lemma SampleJumperNotOk_not_ok:
+  NotCorrect SampleJumperNotOk.
+Proof.
+  unfold NotCorrect.
+  exists 5%nat. unfold SampleJumperNotOk.
+  simpl_code. deal_with_eq_dec; auto.
+  contradiction.
 Qed.
