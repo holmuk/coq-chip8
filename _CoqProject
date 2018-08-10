@@ -1,9 +1,8 @@
--Q lib chip8
--Q src chip8
+-R lib Top
+-R src Top
 
 lib/Coqlib.v
 lib/Integers.v
 lib/Maps.v
 
 src/Hardware.v
-

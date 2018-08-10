@@ -298,4 +298,3 @@ Ltac Fine_eq :=
   | |- context[Fine ?M' ?IM' ?RF' ?St' = Fine _ _ _ _ /\ _] =>
     exists M'; exists IM'; exists RF'; exists St'
   end.
-

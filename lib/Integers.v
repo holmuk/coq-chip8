@@ -16,7 +16,7 @@
 (** Formalizations of machine integers modulo $2^N$ #2<sup>N</sup>#. *)
 
 Require Import Eqdep_dec Zquot Zwf.
-Require Import chip8.Coqlib.
+Require Import Coqlib.
 
 (** * Comparisons *)
 

@@ -1,0 +1,89 @@
+Require Import Integers.
+Require Import Coqlib.
+Require Import Maps.
+
+Require Import Hardware.
+
+Import ListNotations.
+Import Int.
+
+(** Find a maximum of v0 and v1 and load it to v2 *)
+
+Definition ChipMax (a b: int) :=
+  [(Imovr v3 v0);
+   (Isub v3 v1);
+   (Iskeqb vF zero);
+   (Imovr v2 v1);
+   (Iskneb vF zero);
+   (Imovr v2 v0);
+   (Imovb vF zero)].
+
+Lemma lt_eq: forall x,
+  lt (repr x) (repr x) = false.
+Proof.
+  unfold lt. intros. rewrite signed_repr_eq.
+  apply zlt_false. destruct (zlt _ _); intuition.
+Qed.
+
+Lemma lt_pos_true: forall x y,
+  x < y -> 0 <= x < half_modulus -> 0 <= y < half_modulus ->
+  lt (repr x) (repr y) = true.
+Proof.
+  intros. unfold lt. repeat rewrite signed_repr_eq.
+  rewrite half_modulus_modulus.
+  apply zlt_true.
+  repeat rewrite Zmod_small; intuition.
+  repeat rewrite zlt_true; intuition.
+Qed.
+
+Lemma lt_pos_false: forall x y,
+  y <= x -> 0 <= x < half_modulus -> 0 <= y < half_modulus ->
+  lt (repr x) (repr y) = false.
+Proof.
+  intros. unfold lt. repeat rewrite signed_repr_eq.
+  rewrite half_modulus_modulus.
+  apply zlt_false.
+  repeat rewrite Zmod_small; intuition.
+  repeat rewrite zlt_true; intuition.
+Qed.
+
+Lemma ChipMax_ex_ok:
+  exists n M IM RF St,
+  Run (ChipMax (repr 3) (repr 5)) n = Fine M IM RF St /\
+  RF#v2 = (repr 5).
+Proof.
+  exists 7%nat. unfold ChipMax. simpl_code.
+
+  repeat rewrite dec_eq_true.
+  repeat ((let Hf := fresh in
+  (rewrite dec_eq_false; [ idtac | intro Hf; inversion Hf ]) || fail);
+    repeat rewrite dec_eq_true).
+
+  repeat rewrite lt_eq.
+
+  repeat rewrite dec_eq_true.
+  repeat ((let Hf := fresh in
+  (rewrite dec_eq_false; [ idtac | intro Hf; inversion Hf ]) || fail);
+    repeat rewrite dec_eq_true).
+
+  deal_with_eq.
+
+  repeat rewrite dec_eq_true.
+  repeat ((let Hf := fresh in
+  (rewrite dec_eq_false; [ idtac | intro Hf; inversion Hf ]) || fail);
+    repeat rewrite dec_eq_true).
+
+  simpl.
+
+  repeat rewrite dec_eq_true.
+  repeat ((let Hf := fresh in
+  (rewrite dec_eq_false; [ idtac | intro Hf; inversion Hf ]) || fail);
+    repeat rewrite dec_eq_true).
+
+  Fine_eq. intuition.
+
+  repeat rewrite dec_eq_true.
+  repeat ((let Hf := fresh in
+  (rewrite dec_eq_false; [ idtac | intro Hf; inversion Hf ]) || fail);
+    repeat rewrite dec_eq_true).
+Qed.
