@@ -39,7 +39,7 @@ Proof.
   dec_eq_try.
   Fine_eq; intuition. simpl_code.
   dec_eq_try.
-  + rewrite Zmax_spec. destruct (zlt _ _). intuition. auto.
+  + rewrite Zmax_right; auto. apply Z.lt_le_incl; assumption.
   + intro. inversion H1.
   - rewrite lt_pos_false; auto. dec_eq_try.
   deal_with_eq. simpl_code. dec_eq_try.
@@ -58,23 +58,6 @@ Lemma ChipMax_ex_ok:
   Run (ChipMax (repr 3) (repr 5)) n = Fine M IM RF St /\
   RF#v2 = (repr 5).
 Proof.
-  exists 9%nat. unfold ChipMax. simpl_code.
-  dec_eq_try.
-
-  repeat (rewrite dec_eq_false;
-    [ idtac | solve [ let F := fresh in (intro F; inversion F)] ] +
-  rewrite dec_eq_true + fail).
-
-  rewrite lt_pos_true. dec_eq_try.
-  deal_with_eq. simpl_code. dec_eq_try.
-
-  rewrite pred_dec_false; [ idtac | dec_eq_try].
-  simpl.
-  dec_eq_try.
-  Fine_eq; intuition. simpl_code.
-  dec_eq_try.
-  all: intuition.
-  - inversion H.
-  - compute. reflexivity.
-  - compute. reflexivity.
+  apply ChipMax_ok.
+  all: rewrite half_modulus_power; simpl; unfold two_power_pos; simpl; intuition.
 Qed.

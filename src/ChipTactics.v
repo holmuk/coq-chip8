@@ -61,5 +61,5 @@ Lemma rsb_is_reverse_sub: forall M IM RF St v v',
 Proof.
   intros. subst EIMsub. subst EIMrsb.
   simpl_code. rewrite H. simpl.
-  dec_eq_try. auto.
+  dec_eq_try. destruct (lt _ _); auto.
 Qed.
