@@ -3,6 +3,7 @@ Require Import Coqlib.
 Require Import Maps.
 
 Require Import Hardware.
+Require Import ChipTactics.
 
 Import ListNotations.
 Import Int.
@@ -18,9 +19,8 @@ Lemma SimpleSkipper_is_ok:
   Run SimpleSkipper n = Fine M IM RF St /\
   RF#v0 = (repr 4).
 Proof.
-  exists 3%nat. unfold SimpleSkipper. simpl_code. deal_with_eq_dec.
-  all: try Fine_eq; try inverse_eq; deal_with_eq_dec.
-  all: deal_with_eq; deal_with_eq_dec; try Fine_eq.
-  all: intuition.
-  deal_with_eq_dec. inverse_eq. auto.
+  exists 3%nat. unfold SimpleSkipper. simpl_code. dec_eq_try.
+  deal_with_eq. dec_eq_try.
+  Fine_eq. intuition. dec_eq_try.
+  reflexivity.
 Qed.

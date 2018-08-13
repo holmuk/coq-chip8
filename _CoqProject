@@ -5,4 +5,5 @@ lib/Coqlib.v
 lib/Integers.v
 lib/Maps.v
 
+src/ChipTactics.v
 src/Hardware.v

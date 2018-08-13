@@ -3,6 +3,7 @@ Require Import Coqlib.
 Require Import Maps.
 
 Require Import Hardware.
+Require Import ChipTactics.
 
 Import ListNotations.
 Import Int.
@@ -18,8 +19,7 @@ Lemma SimpleAddition_is_ok:
   RF#v0 = (repr 9%Z).
 Proof.
   exists 3%nat. unfold SimpleAddition.
-  simpl_code. deal_with_eq_dec.
-  all: try Fine_eq; try inverse_eq; intuition.
-  deal_with_eq_dec; try inverse_eq.
-  intuition.
+  simpl_code. dec_eq_try.
+  Fine_eq. intuition. dec_eq_try.
+  simpl_code. reflexivity.
 Qed.

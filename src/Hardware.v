@@ -94,25 +94,22 @@ Inductive Instruction : Type :=
   | Ixor: VReg -> VReg -> Instruction
   | Iadd: VReg -> VReg -> Instruction
   | Isub: VReg -> VReg -> Instruction
+  | Irsb: VReg -> VReg -> Instruction
   | Ishr: VReg -> Instruction
   | Ishl: VReg -> Instruction
-  | Irsb: VReg -> VReg -> Instruction
   | Imvi: int -> Instruction
-  | Ijmi: int -> Instruction
-  | Iadi: VReg -> Instruction
   | Istr: VReg -> Instruction
-  | Ildr: VReg -> Instruction.
+  | Ildr: VReg -> Instruction
+  | Inop: Instruction.
 
 Definition code := list Instruction.
-
-(*Module InstructionMap := EMap (IntEq).*)
 
 Module InstructionMap := MemoryMap.
 
 Definition InstructionMemory := MemoryMap.t Instruction.
 
 Definition EmptyInstructionMemory :=
-  MemoryMap.init (Icls).
+  MemoryMap.init (Inop).
 
 (** * Operational semantics of coq-chip8 *)
 
@@ -179,17 +176,11 @@ Definition ExecuteStep (M: Memory) IM RF St : Output :=
   | Iand v v' =>
     Fine M IM ((RF#v <- (and (RF#v) (RF#v')))#PC <- (NextPC RF)) St
   | Iadd v v' =>
-    Fine M IM ((RF#v <- (add (RF#v) (RF#v')))#PC <- (NextPC RF)) St
+    Fine M IM (((RF#v <- (add (RF#v) (RF#v')))#vF <- (add_carry (RF#v) (RF#v') (zero)))#PC <- (NextPC RF)) St
   | Isub v v' =>
-    if (lt RF#v RF#v') then
-      Fine M IM (((RF#v <- (sub (RF#v) (RF#v'))#vF <- one))#PC <- (NextPC RF)) St
-    else
-      Fine M IM ((RF#v <- (sub (RF#v) (RF#v')))#PC <- (NextPC RF)) St
+    Fine M IM (((RF#v <- (sub (RF#v) (RF#v')))#vF <- (sub_borrow (RF#v) (RF#v') (zero)))#PC <- (NextPC RF)) St
   | Irsb v' v =>
-    if (lt RF#v RF#v') then
-      Fine M IM (((RF#v <- (sub (RF#v) (RF#v'))#vF <- one))#PC <- (NextPC RF)) St
-    else
-      Fine M IM ((RF#v <- (sub (RF#v) (RF#v')))#PC <- (NextPC RF)) St
+    Fine M IM (((RF#v <- (sub (RF#v) (RF#v')))#vF <- (sub_borrow (RF#v) (RF#v') (zero)))#PC <- (NextPC RF)) St
   | Ishr v =>
     let cr := (shr RF#v one) in
     if (eq (mul cr (repr 2%Z)) RF#v) then
@@ -200,13 +191,12 @@ Definition ExecuteStep (M: Memory) IM RF St : Output :=
     Fine M IM (((RF#v <- (shl RF#v one))#vF <- (and RF#v one))#PC <- (NextPC RF)) St
   | Imvi i =>
     Fine M IM ((RF#AReg <- i)#PC <- (NextPC RF)) St
-  | Ijmi i =>
-    Fine M IM (RF#PC <- (add i RF#v0)) St
-  | Iadi v =>
-    Fine M IM ((RF#AReg <- (add (RF#v) (RF#AReg)))#PC <- (NextPC RF)) St
   | Istr v =>
     Fine (MemoryMap.set (RF#v) (RF#AReg) M) IM (RF#PC <- (NextPC RF)) St
-  | _ => Fail
+  | Ildr v =>
+    Fine M IM ((RF#v <- (M (RF#AReg)))#PC <- (NextPC RF)) St
+  | Inop =>
+    Fine M IM RF St
   end.
 
 (** It's not the truth every program will end up within finite time, so I decided to introduce n *)
@@ -242,6 +232,40 @@ Proof.
   case (Z.eq_dec _ _); intros; intuition.
 Qed.
 
+Lemma lt_eq: forall x,
+  lt (repr x) (repr x) = false.
+Proof.
+  unfold lt. intros. rewrite signed_repr_eq.
+  apply zlt_false. destruct (zlt _ _); intuition.
+Qed.
+
+Lemma lt_pos_true: forall x y,
+  x < y -> 0 <= x < half_modulus -> 0 <= y < half_modulus ->
+  lt (repr x) (repr y) = true.
+Proof.
+  intros. unfold lt. repeat rewrite signed_repr_eq.
+  rewrite half_modulus_modulus.
+  apply zlt_true.
+  repeat rewrite Zmod_small; intuition.
+  repeat rewrite zlt_true; intuition.
+Qed.
+
+Lemma lt_pos_false: forall x y,
+  y <= x -> 0 <= x < half_modulus -> 0 <= y < half_modulus ->
+  lt (repr x) (repr y) = false.
+Proof.
+  intros. unfold lt. repeat rewrite signed_repr_eq.
+  rewrite half_modulus_modulus.
+  apply zlt_false.
+  repeat rewrite Zmod_small; intuition.
+  repeat rewrite zlt_true; intuition.
+Qed.
+(*
+Ltac dec_eq_try :=
+  repeat (rewrite dec_eq_false;
+    [ idtac | solve [ let F := fresh in (intro F; inversion F)] ] +
+  rewrite dec_eq_true + fail).
+
 Ltac simpl_code :=
   repeat autounfold with chipmem; simpl;
   repeat match goal with
@@ -262,13 +286,7 @@ Ltac deal_with_eq_dec :=
   | H: context[Reg_eq ?x ?x] |- _ =>
     rewrite dec_eq_true in H; try rewrite H
   end; repeat (case (Reg_eq _ _); intros).
-
-Ltac deal_with_eq_dec_fast :=
-  repeat rewrite dec_eq_true;
-  repeat ((let Hf := fresh in
-  (rewrite dec_eq_false; [ idtac | intro Hf; inversion Hf ]) || fail);
-    repeat rewrite dec_eq_true; simpl).
-
+*)
 Ltac inverse_eq :=
   match goal with
   | H: ?x = ?y |- _ => try inversion H
@@ -283,7 +301,7 @@ Proof.
   case (Z.eq_dec _ _); intros; intuition.
   inverse_eq.
 Qed.
-
+(*
 Ltac deal_with_eq :=
   repeat match goal with
   | |- context [eq ?x ?x] =>
@@ -297,5 +315,30 @@ Ltac Fine_eq :=
   match goal with
   | |- context[Fine ?M' ?IM' ?RF' ?St' = Fine _ _ _ _ /\ _] =>
     exists M'; exists IM'; exists RF'; exists St'
+  end.*)
+
+Definition OutputM (Out: Output) : option Memory :=
+  match Out with
+  | Fail => None
+  | Fine M _ _ _ => Some M
   end.
 
+Definition OutputIM (Out: Output) : option InstructionMemory :=
+  match Out with
+  | Fail => None
+  | Fine _ IM _ _ => Some IM
+  end.
+
+Definition OutputRF (Out: Output) : option RegFile :=
+  match Out with
+  | Fail => None
+  | Fine _ _ RF _ => Some RF
+  end.
+
+Definition OutputStack (Out: Output) : option Stack :=
+  match Out with
+  | Fail => None
+  | Fine _ _ _ St => Some St
+  end.
+
+Hint Unfold OutputM OutputIM OutputRF OutputStack : chipmem.

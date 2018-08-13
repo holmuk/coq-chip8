@@ -3,6 +3,7 @@ Require Import Coqlib.
 Require Import Maps.
 
 Require Import Hardware.
+Require Import ChipTactics.
 
 Import ListNotations.
 Import Int.
@@ -18,6 +19,5 @@ Lemma SimpleJumperNotOk_not_ok:
 Proof.
   unfold NotCorrect.
   exists 5%nat. unfold SimpleJumperNotOk.
-  simpl_code. deal_with_eq_dec; auto.
-  contradiction.
+  simpl_code. dec_eq_try; auto.
 Qed.
